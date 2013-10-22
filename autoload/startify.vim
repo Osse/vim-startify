@@ -14,6 +14,7 @@ let g:autoloaded_startify = 1
 let s:numfiles         = get(g:, 'startify_files_number', 10)
 let s:show_special     = get(g:, 'startify_enable_special', 1)
 let s:restore_position = get(g:, 'startify_restore_position')
+let s:valid_lines      = []
 let s:session_dir      = resolve(expand(get(g:, 'startify_session_dir',
       \ has('win32') ? '$HOME\vimfiles\session' : '~/.vim/session')))
 
@@ -32,7 +33,6 @@ else
         \ ]
 endif
 
-let s:secoff = type(s:lists[0]) == 3 ? (len(s:lists[0]) + 1) : 0
 let s:section_header_lines = []
 
 " Init: autocmds {{{1
@@ -53,7 +53,7 @@ let s:sep = startify#get_separator()
 
 " Function: #get_lastline {{{1
 function! startify#get_lastline() abort
-  return s:lastline
+  return s:valid_lines[-1]
 endfunction
 
 " Function: #insane_in_the_membrane {{{1
@@ -75,19 +75,19 @@ function! startify#insane_in_the_membrane() abort
   endif
 
   let cnt = 0
-  let s:headoff = 2
 
   if exists('g:startify_custom_header')
     call append('$', g:startify_custom_header)
-    let s:headoff += len(g:startify_custom_header)
   endif
 
   if s:show_special
-    call append('$', ['   [e]  <empty buffer>', ''])
+    call s:append_item('$', '   [e]  <empty buffer>')
+    call append('$', '')
   endif
 
   if get(g:, 'startify_session_detection', 1) && filereadable('Session.vim')
-    call append('$', ['   [0]  '. getcwd() . s:sep .'Session.vim', ''])
+    call s:append_item('$', '   [0]  '. getcwd() . s:sep .'Session.vim')
+    call append('$', '')
     execute 'nnoremap <buffer> 0 :source Session.vim<cr>'
     let cnt = 1
   endif
@@ -108,10 +108,9 @@ function! startify#insane_in_the_membrane() abort
   endfor
 
   if s:show_special
-    call append('$', ['', '   [q]  <quit>'])
+    call append('$', '')
+    call s:append_item('$', '   [q]  <quit>')
   endif
-
-  let s:lastline = line('$')
 
   if exists('g:startify_custom_footer')
     call append('$', g:startify_custom_footer)
@@ -139,7 +138,7 @@ function! startify#insane_in_the_membrane() abort
     autocmd startify BufReadPost * call s:restore_position()
   endif
 
-  call cursor((s:show_special ? 2 : 0) + s:headoff + 2, 5)
+  call cursor(s:valid_lines[0], 5)
 
   silent! doautocmd <nomodeline> startify User
 endfunction
@@ -275,7 +274,7 @@ function! s:show_dir(cnt) abort
       let index = s:get_index_as_string(cnt)
       let fname = items[1]
 
-      call append('$', '   ['. index .']'. repeat(' ', (3 - strlen(index))) . fname)
+      call s:append_item('$', '   ['. index .']'. repeat(' ', (3 - strlen(index))) . fname)
       execute 'nnoremap <buffer>' index ':edit' fnameescape(fname) '<cr>'
 
       let cnt += 1
@@ -317,7 +316,7 @@ function! s:show_files(cnt) abort
       let entries[fullpath] = 1
       let index = s:get_index_as_string(cnt)
 
-      call append('$', '   ['. index .']'. repeat(' ', (3 - strlen(index))) . fname)
+      call s:append_item('$', '   ['. index .']'. repeat(' ', (3 - strlen(index))) . fname)
       execute 'nnoremap <buffer>' index ':edit' fnameescape(fname) '<bar> call <sid>check_user_options()<cr>'
 
       let cnt += 1
@@ -355,7 +354,7 @@ function! s:show_sessions(cnt) abort
     let idx   = (i + cnt)
     let index = s:get_index_as_string(idx)
 
-    call append('$', '   ['. index .']'. repeat(' ', (3 - strlen(index))) . fnamemodify(sfiles[i], ':t:r'))
+    call s:append_item('$', '   ['. index .']'. repeat(' ', (3 - strlen(index))) . fnamemodify(sfiles[i], ':t:r'))
     execute 'nnoremap <buffer>' index ':source' fnameescape(sfiles[i]) '<cr>'
   endfor
 
@@ -376,7 +375,7 @@ function! s:show_bookmarks(cnt) abort
     for fname in g:startify_bookmarks
       let index = s:get_index_as_string(cnt)
 
-      call append('$', '   ['. index .']'. repeat(' ', (3 - strlen(index))) . fname)
+      call s:append_item('$', '   ['. index .']'. repeat(' ', (3 - strlen(index))) . fname)
       execute 'nnoremap <buffer>' index ':edit' fnameescape(fname) '<bar> call <sid>check_user_options()<cr>'
 
       let cnt += 1
@@ -411,25 +410,10 @@ function! s:set_cursor() abort
   let s:oldline = exists('s:newline') ? s:newline : 5
   let s:newline = line('.')
 
-  if !exists('s:firstline')
-    let s:firstline = s:show_special ? s:headoff : (s:headoff + s:secoff)
-  endif
-
-  " going down
-  if s:newline > s:oldline
-    while index(s:section_header_lines, s:newline) != -1
-      let s:newline += 1
-    endwhile
-    if empty(getline(s:newline)) | let s:newline += 1         | endif
-    if s:newline > s:lastline    | let s:newline = s:lastline | endif
-  " going up
-  elseif s:newline < s:oldline
-    while index(s:section_header_lines, s:newline) != -1
-      let s:newline -= 1
-    endwhile
-    if empty(getline(s:newline)) | let s:newline -= 1          | endif
-    if s:newline < s:firstline   | let s:newline = s:firstline | endif
-  endif
+  let s:newline = max([s:valid_lines[0], min([s:valid_lines[-1], s:newline])])
+  while index(s:valid_lines, s:newline) == -1
+    let s:newline += 2 * (s:oldline < s:newline) - 1
+  endwhile
 
   call cursor(s:newline, 5)
 endfunction
@@ -571,6 +555,12 @@ function! s:restore_position() abort
   if line("'\"") > 0 && line("'\"") <= line('$')
     call cursor(getpos("'\"")[1:])
   endif
+endfunction
+
+" Function: s:append_item {{{1
+function! s:append_item(...)
+  call call('append', a:000)
+  let s:valid_lines += [ line(a:1) ]
 endfunction
 
 " Function: s:session_write {{{1
