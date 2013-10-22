@@ -111,6 +111,7 @@ function! startify#insane_in_the_membrane() abort
     call append('$', ['', '   [q]  <quit>'])
   endif
 
+  let s:firstline = s:show_special ? s:headoff : (s:headoff + s:secoff)
   let s:lastline = line('$')
 
   if exists('g:startify_custom_footer')
@@ -410,10 +411,6 @@ endfunction
 function! s:set_cursor() abort
   let s:oldline = exists('s:newline') ? s:newline : 5
   let s:newline = line('.')
-
-  if !exists('s:firstline')
-    let s:firstline = s:show_special ? s:headoff : (s:headoff + s:secoff)
-  endif
 
   " going down
   if s:newline > s:oldline
